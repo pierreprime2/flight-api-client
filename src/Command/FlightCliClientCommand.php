@@ -2,7 +2,7 @@
 
 namespace App\Command;
 
-use App\Service\SerpApiClient;
+use App\Service\AviationStackClient;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -19,9 +19,9 @@ use function PHPSTORM_META\type;
 )]
 class FlightCliClientCommand extends Command
 {
-    private SerpApiClient $apiClient;
+    private AviationStackClient $apiClient;
 
-    public function __construct(SerpApiClient $apiClient)
+    public function __construct(AviationStackClient $apiClient)
     {
         parent::__construct();
         $this->apiClient = $apiClient;
@@ -43,12 +43,13 @@ class FlightCliClientCommand extends Command
         // type casts
         $type = strtolower($input->getArgument('type'));
         $code = strtoupper($input->getArgument('code'));
-        $limit = (int)$input->getArgument('limit');
+        $limit = (int) $input->getArgument('limit');
 
         try {
-            switch($type) {
+            switch ($type) {
                 case 'departure':
                     $flights = $this->apiClient->getDeparturesFromAirport($code, $limit);
+                    print_r($flights);
                     $this->renderFlights($flights, $io);
                     break;
                 case 'destination':
@@ -57,9 +58,9 @@ class FlightCliClientCommand extends Command
                     break;
                 case 'flight':
                     $flight = $this->apiClient->getFlightDetails($code);
-                    if($flight) {
+                    if ($flight) {
                         $io->title("Flight $code Details");
-                        $io->listing($this->formatFlight($flight));
+                        $io->listing($this->formatFlightDetails($flight));
                     } else {
                         $io->warning("No detail found for flight ID: $code");
                     }
@@ -77,6 +78,62 @@ class FlightCliClientCommand extends Command
 
     private function renderFlights(array $flights, SymfonyStyle $io): void
     {
-        
+        if (empty($flights)) {
+            $io->warning("No flights found.");
+            return;
+        }
+
+        $row = [];
+        foreach ($flights as $flight) {
+            $rows[] = [
+                $flight['flight']['iata'] ?? 'N/A',
+                $flight['airline']['name'] ?? 'N/A',
+                $flight['departure']['airport'] ?? 'N/A',
+                $this->formatTime($flight['departure']['scheduled'] ?? null),
+                $flight['arrival']['airport'] ?? 'N/A',
+                $this->formatTime($flight['arrival']['scheduled'] ?? null),
+                $flight['flight_status'] ?? 'N/A',
+            ];
+        }
+
+        $io->table(
+            ['Flight #', 'Airline', 'From', 'Dep Time', 'To', 'Arr Time', 'Status'],
+            $rows
+        );
+    }
+
+    private function formatTime(?string $time): string
+    {
+        if (!$time)
+            return 'N/A';
+        try {
+            return (new \DateTime($time))->format('Y-m-d H:i');
+        } catch (\Exception) {
+            return 'Invalid';
+        }
+    }
+
+    private function formatFlight(array $flight): array
+    {
+        return [
+            'Flight #: ' . ($flight['flight_number'] ?? 'N/A'),
+            'Airline: ' . ($flight['airline']['name'] ?? 'N/A'),
+            'From: ' . ($flight['departure_airport']['name'] ?? 'N/A'),
+            'To: ' . ($flight['arrival_airport']['name'] ?? 'N/A'),
+            'Duration: ' . ($flight['duration'] ?? 'N/A'),
+        ];
+    }
+
+    private function formatFlightDetails(array $flight): array
+    {
+        return [
+            "Flight #: " . ($flight['flight']['iata'] ?? 'N/A'),
+            "Airline: " . ($flight['airline']['name'] ?? 'N/A'),
+            "From: " . ($flight['departure']['airport'] ?? 'N/A'),
+            "Dep Time: " . $this->formatTime($flight['departure']['scheduled'] ?? null),
+            "To: " . ($flight['arrival']['airport'] ?? 'N/A'),
+            "Arr Time: " . $this->formatTime($flight['arrival']['scheduled'] ?? null),
+            "Status: " . ($flight['status'] ?? 'N/A'),
+        ];
     }
 }
